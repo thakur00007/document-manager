@@ -26,7 +26,11 @@ app.use(
 
 //routers
 import userRouter from "./routers/user.route.js";
+import folderRouter from "./routers/folder.route.js";
+import fileRouter from "./routers/file.route.js";
 
 app.use("/api/v1/user", userRouter);
+app.use("/api/v1/folder", folderRouter);
+app.use("/api/v1/file", fileRouter);
 
 export default app;
