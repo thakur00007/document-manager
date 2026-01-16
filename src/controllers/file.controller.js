@@ -5,55 +5,92 @@ import ApiResponse from "../utility/ApiResponse.js";
 import requestHandler from "../utility/requestHandeller.js";
 import storageService from "../service/storage.service.js";
 import { v4 as uuidv4 } from "uuid";
+import { User } from "../models/user.model.js";
+import { sequelize } from "../db/db.js";
+import fs from "fs";
 
 // Upload File
 const uploadFile = requestHandler(async (req, res) => {
-  if (!req.file) {
-    throw new ApiError(400, "No file uploaded");
-  }
-
-  const userId = req.user.id;
-  let { path } = req.body;
-  const { originalname, buffer, mimetype, size } = req.file;
-
-  let folderId = null;
-
-  if (path && path !== "/" && path !== "") {
-    if (!path.startsWith("/")) path = `/${path}`;
-    if (!path.endsWith("/")) path = `${path}/`;
-
-    const folder = await Folder.findOne({ where: { path, userId } });
-    if (!folder) {
-      throw new ApiError(404, "Destination folder not found");
+  try {
+    if (!req.file) {
+      throw new ApiError(400, "No file uploaded");
     }
-    folderId = folder.id;
-  }
 
-  const existingFile = await File.findOne({
-    where: { name: originalname, folderId, userId },
-  });
-  if (existingFile) {
-    throw new ApiError(409, "File with this name already exists");
-  }
+    const userId = req.user.id;
+    let { path } = req.body;
+    const { originalname, path: localFilePath, mimetype, size } = req.file;
 
-  const storageKey = `${userId}/${uuidv4()}-${originalname}`;
+    let folderId = null;
 
-  await storageService.upload(buffer, storageKey, mimetype);
+    if (path && path !== "/" && path !== "") {
+      if (!path.startsWith("/")) path = `/${path}`;
+      if (!path.endsWith("/")) path = `${path}/`;
 
-  const newFile = await File.create({
-    name: originalname,
-    type: mimetype,
-    size: size,
-    storageKey: storageKey,
-    folderId: folderId,
-    userId: userId,
-  });
+      const folder = await Folder.findOne({ where: { path, userId } });
+      if (!folder) {
+        throw new ApiError(404, "Destination folder not found");
+      }
+      folderId = folder.id;
+    }
 
-  return res
-    .status(201)
-    .json(
-      new ApiResponse(201, "File uploaded successfully", { file: newFile })
+    const existingFile = await File.findOne({
+      where: { name: originalname, folderId, userId },
+    });
+    if (existingFile) {
+      throw new ApiError(409, "File with this name already exists");
+    }
+
+    const storageKey = `${userId}/${uuidv4()}-${originalname}`;
+
+    await storageService.upload(localFilePath, storageKey, mimetype);
+
+    const newFile = await sequelize.transaction(async (transaction) => {
+      try {
+        const file = await File.create(
+          {
+            name: originalname,
+            type: mimetype,
+            size,
+            storageKey,
+            folderId,
+            userId,
+          },
+          { transaction }
+        );
+
+        await User.increment("storageUsed", {
+          by: size,
+          where: { id: userId },
+          transaction,
+        });
+
+        const user = await User.findByPk(userId, {
+          transaction,
+        });
+
+        return { file, storageInfo: user.getStorageInfo() };
+      } catch (error) {
+        console.error("Transaction failed:", error);
+        throw error;
+      }
+    });
+    return res.status(201).json(
+      new ApiResponse(201, "File uploaded successfully", {
+        file: { ...newFile.file.dataValues, ...newFile.storageInfo },
+      })
     );
+  } catch (error) {
+    throw error;
+  } finally {
+    // Clean up temp file
+    if (req.file && req.file.path) {
+      fs.unlink(req.file.path, (err) => {
+        if (err) {
+          console.error("Error deleting temp file:", err);
+        }
+      });
+    }
+  }
 });
 
 // List Files
@@ -107,7 +144,22 @@ const deleteFile = requestHandler(async (req, res) => {
 
   await storageService.delete(file.storageKey);
 
-  await file.destroy();
+  await sequelize.transaction(async (transaction) => {
+    try {
+      await User.decrement("storageUsed", {
+        by: file.size,
+        where: { id: userId },
+        transaction,
+      });
+
+      await file.destroy({
+        transaction,
+      });
+    } catch (error) {
+      console.error("Transaction failed:", error);
+      throw error;
+    }
+  });
 
   return res
     .status(200)

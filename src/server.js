@@ -8,7 +8,7 @@ dotenv.config({
 const port = process.env.NODE_SERVER_PORT || 4000;
 
 sequelize
-  .sync({ alter: false })
+  .sync({ alter: process.env.NODE_ENV === "development" })
   .then(() => {
     app.listen(port, () => {
       console.log(`Server is running on port ${port}`);

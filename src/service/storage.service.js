@@ -5,6 +5,7 @@ import {
   GetObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import fs from "fs";
 
 class StorageService {
   constructor() {
@@ -30,14 +31,17 @@ class StorageService {
     this.client = new S3Client(config);
   }
 
-  async upload(fileBuffer, key, mimeType) {
+  async upload(filePath, key, mimeType) {
     const command = new PutObjectCommand({
       Bucket: this.bucket,
       Key: key,
-      Body: fileBuffer,
+      Body: fs.createReadStream(filePath),
+
       ContentType: mimeType,
     });
-    return this.client.send(command);
+
+    await this.client.send(command);
+    fs.unlinkSync(filePath);
   }
 
   async delete(key) {

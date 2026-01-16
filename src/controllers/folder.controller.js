@@ -195,7 +195,6 @@ const getFolders = requestHandler(async (req, res) => {
 const listByPath = requestHandler(async (req, res) => {
   const userId = req.user.id;
   let { path } = req.query;
-  console.log("Requested path:", path);
 
   if (!path || path === "/" || path === "") {
     const folders = await Folder.findAll({

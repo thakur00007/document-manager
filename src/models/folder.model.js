@@ -19,7 +19,7 @@ const Folder = sequelize.define(
       onUpdate: "CASCADE",
     },
     path: {
-      type: DataTypes.STRING(1000),
+      type: DataTypes.STRING(750),
       allowNull: false,
       unique: "path_unique_constraint",
     },

@@ -21,12 +21,12 @@ const User = sequelize.define(
     username: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true,
+      // unique: true,
     },
     email: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true,
+      // unique: true,
     },
     password: {
       type: DataTypes.STRING,
@@ -36,9 +36,25 @@ const User = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
+    storageUsed: {
+      type: DataTypes.BIGINT,
+      defaultValue: 0,
+    },
   },
   {
     timestamps: true,
+    indexes: [
+      {
+        unique: true,
+        fields: ["username"],
+        name: "unique_username_constraint", // Explicit name prevents duplicates
+      },
+      {
+        unique: true,
+        fields: ["email"],
+        name: "unique_email_constraint", // Explicit name prevents duplicates
+      },
+    ],
   }
 );
 
@@ -80,6 +96,19 @@ User.prototype.generateRefreshToken = function () {
       expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN,
     }
   );
+};
+
+// TODO: get safe user data without password and refresh token
+
+// get storage used and max storage from env variable
+User.prototype.getStorageInfo = function () {
+  const maxStorage =
+    parseInt(process.env.MAX_STORAGE_PER_USER_IN_BYTES) || 5242880; // Default 5MB
+  return {
+    storageUsed: this.storageUsed,
+    maxStorage: maxStorage,
+    left: maxStorage - this.storageUsed,
+  };
 };
 
 export { User };
